@@ -1,0 +1,387 @@
+---
+title: "MA611 Assignment 3"
+author: "Ignacio Carracedo"
+date: "October 1st, 2016"
+output: html_document
+---
+
+
+## Number of armed robberies in Boston.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+library(FinTS)
+setwd('C:\\Users\\carrai1\\Desktop\\Master\\MA611_Time_Series\\Assigments\\3\\')
+bos.df=scan(file='.\\Boston.dat')
+bos.ts=ts(bos.df,start=c(1966,1),frequency=12)
+```
+
+In this document we are going to apply different techniques to model the time series data for 'Number of armed robberies in Boston' evaluating their fit and choosing from them the best model to forecast values for November and December 1976. First, let's take a look a the data:
+
+```{r, echo=FALSE}
+bos.ts=ts(bos.df,start=c(1966,1),frequency=12)
+plot(bos.ts, main="Armed robberies in Boston")
+```
+
+**1. Use the moving average decomposition models we discussed in class along with R (decompose). ** 
+
+The first model we'll apply is the moving average decomposition model (smoothing model). There are two flavors of this model, additive and multiplicative. Let's apply both and compare results. On the next two plots we can see the model (red line) plotted on top of of data:
+
+```{r, echo=FALSE}
+bos.da=decompose(bos.ts,type='additive')
+bos.dm=decompose(bos.ts,type='multiplicative')
+```
+
+
+```{r, echo=FALSE}
+predda=bos.da$trend+bos.da$seasonal
+layout(1:1)
+plot(bos.ts,lwd=2, main="Decomposition mov.avg - Additive")
+lines(predda,col='red',lwd=2)
+```
+
+
+```{r, echo=FALSE}
+preddm=bos.dm$trend*bos.dm$seasonal
+layout(1:1)
+plot(bos.ts,lwd=2,main="Decomposition mov.avg - Multiplicative")
+lines(preddm,col='red',lwd=2)
+```
+
+Visually, it seems the multiplicative model fits the data better. But let's make sure using the mean root square error (RMSE).
+
+**1.a. Determine the best model to fit the data (justify your conclusion both in terms of the characteristics of the data and an evaluation of the fit).**
+
+The best way to check how the model fits the data is to calculate the RMSE This measure will allow us to compare models.
+
+***NOTE*** In decomposition moving average models We neen to average seasons so a few values at the begining and at the end will be lost (We won't be able to plot them)
+
+Let's calculate mrse for both of our models:
+
+```{r, echo=FALSE}
+#ad
+bosdaresid=window(bos.da$random, start=c(1966,7), end=c(1975,4))
+rmseda=sqrt(sum(bosdaresid^2)/length(bosdaresid))
+#mul
+resid=bos.ts-preddm
+bosdmresid=window(resid, start=c(1966,7), end=c(1975,4))
+rmsedm=sqrt(sum(bosdmresid^2)/length(bosdmresid))
+print(paste("RMSE decomposition additive: ", rmseda))
+print(paste("RMSE decomposition multiplicate: ", rmsedm))
+```
+
+As we suspected, the multiplicative model has a lower RMSE which means that it is a better fit for the data then the additive model. Thus, I'll use the multiplicative model to make the predictions. 
+
+The reason behind the multiplicative model fitting the data better is that the time series we have has a seasonal effect that increases as the trend increases. This can be easily seen plotting the data.
+
+**1.b. Fit a trend line to the smoothed deseasonalized series to facilitate forecasting using your choice of model in a.**
+
+Smoothing models do not produce a formula that can be extrapolated to give forecasts. But we can fit a line to model the trend. We'll use the multiplicative model which yielded a higher RMSE Below is the plot of regressing the trend over time:
+
+```{r, echo=FALSE}
+tr=window(bos.dm$trend, start=c(1966,7), end=c(1975,4))
+tim=time(tr)
+ti = unclass(tim)
+# now we perform linear regression
+trreg=lm(tr~ti)
+plot(tr,lwd=2, main="Linear regression - Decomposition Trend",ylim=c(-5,450))
+lines(ti,fitted(trreg),col='red',lwd=2)
+```
+
+**1.c. Generate forecasts for Nov. 1975 and Dec. 1975 using the best model determined in 1.a.**
+
+Now that we have our linear model we can use it to forecast values for Nov. 1975 and Dec. 1975:
+
+```{r, echo=FALSE}
+predtime=c(1975.833,1975.917)
+preddata=predict(trreg,data.frame(ti=predtime),se.fit=TRUE)
+data.frame(Time = c("Nov 1975","Dec 1975"),Prediction = preddata$fit)
+```
+
+**2.Use the loess decomposition models we discussed in class along with R (stl).**
+
+Now, let's apply another smoothing method. This method uses a locally weighted regression technique known as loess. Below are the plots for the additive and multiplicate model (red line) on top or the data.
+
+***NOTE*** Even though loess multiplicate model requires a data transformation (log), we'll always show the data in original scale unless otherwise mentioned.
+
+```{r, echo=FALSE}
+bos.stla=stl(bos.ts,s.window='periodic')
+#plot(bos.stla)
+pred1=bos.stla$time.series[,'seasonal'] + bos.stla$time.series[,'trend']
+plot(bos.ts,lwd=2, main="Loess - Additive")
+lines(pred1,col='red',lwd=2)
+```
+
+
+```{r, echo=FALSE}
+logbos.ts=log(bos.ts)
+#plot(logbos.ts,ylab='log(Boston_crime)')
+bos.stlm=stl(logbos.ts,s.window='periodic')
+#plot(bos.stlm)
+pred2=bos.stlm$time.series[,'seasonal'] + bos.stlm$time.series[,'trend']
+plot(logbos.ts,lwd=2,main="Loess - Multiplicative")
+lines(pred2,col='red',lwd=2)
+```
+
+
+**2.a. Using both types of fit (additive and multiplicative), determine the best model to fit the data (justify your conclusion both in terms of the characteristics of the data and an evaluation of the fit).**
+
+Again, to check the best fit to the data we are going to calculate the RMSE for both models:
+
+
+```{r, echo=FALSE}
+# aditive
+rmseda=sqrt(sum(bos.stla$time.series[,'remainder']^2)/length(bos.stla$time.series[,'remainder']))
+# multi
+resid=bos.ts-(exp(pred2))
+rmsedm=sqrt(sum(resid^2)/length(resid))
+print(paste("RMSE loess decomposition additive: ", rmseda))
+print(paste("RMSE loess decomposition multiplicate model: ", rmsedm))
+
+```
+
+Clearly, loess  multiplicate model fits the data much better. Again, this is due to a seasonal effect that increases as the trend increases.
+
+**2.b. Fit a trend line to the smoothed deseasonalized series to facilitate forecasting using your choice of model in part a.**
+
+As we mentioned before, if we want to forecast beyond the last date at which we have data we need to create a forecast of the trend component using a linear model, for intance, linear regression. We want to regress the trend of the log transformed data against time. Here is the regression line in log scale (red):
+
+```{r, echo=FALSE}
+#we need to extract the time values of the time series as a separate variable.
+tr=bos.stlm$time.series[,'trend']
+tim=time(tr)
+ti = unclass(tim)
+# now we perform linear regression
+trreg=lm(tr~ti)
+plot(tr,lwd=2,ylim=c(3.5,6.5), main="Linear regression - Loess Trend")
+lines(ti,fitted(trreg),col='red',lwd=2)
+```
+
+**2.c. Generate forecasts for Nov. and Dec 1975 using the best model determined in a. **
+
+Now that we have our regression model we can forecast for Nov and Dec 1975 as we did before. Also, we'll plot the linear regression (original scale - red line), the predictions (red dots) and a 95% interval (blue lines):
+
+```{r, echo=FALSE}
+predtime=c(1975.833,1975.917)
+preddata=predict(trreg,data.frame(ti=predtime),se.fit=TRUE)
+data.frame(Time = c("Nov 1975","Dec 1975"),Prediction = exp(preddata$fit))
+
+#tail(bos.stlm$time.series[,'seasonal'],14)
+season=c(0.016314677,0.094040442)
+
+predvalues=preddata$fit
+spredvalues <- predvalues+season
+
+prederror=preddata$se.fit
+predupperse=spredvalues+2*prederror
+predlwrse=spredvalues-2*prederror 
+epredvalues=exp(spredvalues)
+epredupperse=exp(predupperse)
+epredlwrse=exp(predlwrse)
+
+plot(ti,bos.ts,ylim=c(0,700),xlim=c(1966,1977),type='l',main="Predictions - original scale")
+lines(ti,exp(fitted(trreg)),col='red')
+points(predtime,epredvalues,col='red',pch=19)
+lines(predtime,epredupperse,col='blue',lwd=2)
+lines(predtime,epredlwrse,col='blue',lwd=2)
+```
+
+**3.a. As a special case of a decomposition model, use a regression model to represent the series as a linear function of time.**
+
+As a special case of a decomposition model, we'll use a regression model which also uses trend and season (as dummy variable) as input variables. Time series regression differs from linear regression because the errors tend to be correlated. On the plot below we can see our regression line (red):
+
+```{r, echo=FALSE}
+btime=unclass(time(bos.ts))
+bseas=cycle(bos.ts)
+bdata=coredata(bos.ts)
+bosreg=lm(bdata~0+btime+factor(bseas))
+boshat=fitted(bosreg)
+plot(bos.ts,ylim=c(-20,520),main="Regression model")
+lines(btime,boshat,col='red')
+```
+
+
+**3.b. Use appropriate output and residual plots to comment of the fit of the model.**
+
+Now, let's check some informaton and plots to validate or linear regression model and it's assumpions. First, let's take a quick look at the cooeficents, R2 (goodness-of-fit measure) and stardard error:
+
+```{r, echo=FALSE}
+summary(bosreg)
+```
+
+R2 is 0.9721 which means that 97% of the variance can be explained by our model. Also, we can see that all predictors are significant because their p-value is very low. Be aware though, that we should interpret this information with special care because some linear regression assumptions may not be met (for intance, indepence of residuals), thus, we could be over or under estimating all these values.
+
+Let's check now the diagnostic plots that R gives us to validate linear regression assumptions which are:
+
+* Equal variance (homoscedasticity) or errors
+* i.i.d errors
+* Normalitity (0, sd) of errors
+* Linear relationship between predictors and dependent variable
+
+
+```{r, echo=FALSE}
+ebos=resid(bosreg)
+plot(bosreg)
+```
+
+
+Here is what these plots are telling us about our model:
+
+* Residuals vs Fitted: This plot shows us if the residuals have non-linear patters. In our case the red line is not horizontal so the linear relationship is not clear. A polinomial model may be a better fit for the data. We'll try this model afterwards.
+* Normal Q-Q: This plots shows if the distribution of errors is normal. Here we see that our line deviates from the dot line which means or distribution is slightly skewed.
+* Scale-Location: This is how you can check the assumption of equal variance (homoscedasticity). If you see a horizontal line with equally (randomly) spread points the model will meet this assumption. In our plot this is not met, the residuals vary in the way they are spread along the line so we can not assume homoscedasticity.
+* Residuals vs Leverage: This plot is good to check for influencial outliers in our data. In our case we have none.
+
+Now that we know that some of the assumptions of linear regression are not met, let's check the histogram and autocorrelation of residuals to corraborate this:
+
+```{r, echo=FALSE}
+#hist errors
+Errors.Linear <- ebos
+hist(Errors.Linear)
+acf(Errors.Linear)
+AutocorTest(Errors.Linear,lag=1)
+AutocorTest(Errors.Linear,lag=log(length(ebos)))
+```
+
+The histogram confirms that the residuals are not normally distributed.
+The autocorrelation output and the autocorrelation tests tell us there is a bit of correlation at the begining but not enoghg to worry. 
+
+**3.c. Try and fit a quadratic model of time. Comment on whether the fit is improved. Are there still weaknesses?**
+
+As we've seem above, there are some assumptions that are not met. Specially worrisome is the thought of a non-linear relationship. In order to try to find a better fit to the data we are going to use a quadratic model where 'time' will be squared and used as a new variable. Let's build the model and check how it looks and the summary statistics:
+
+```{r, echo=FALSE}
+bosreg2=lm(bdata~0+btime+I(btime^2)+factor(bseas))
+ebos2=resid(bosreg2)
+boshat2=fitted(bosreg2)
+plot(bos.ts,ylim=c(-5,550),main="Regression model - Quadratic")
+lines(btime,boshat2,col='red')
+summary(bosreg2)
+```
+
+To compare the quadratic model with our previous linear regression model we'll take a look at adjusted R square (adR2), which is a goodness-of-fit for the model but takes into account the number of predictors (the more predictos the higher the R2):
+
+* adR2 Linear: 0.9686 
+* adR2 Quadratic: 0.9731 
+
+As we can see the quadratic model is a better fit but let's also check the diagnotic plots to see if the linear assumptions has improved and we have a better bit:
+
+```{r, echo=FALSE}
+#plot(bosreg2)
+#plot result
+plot(bosreg2)
+Errors.Quadratic <- ebos2
+#hist errors
+hist(Errors.Quadratic)
+# autocorrelation. There is some seasonality we didn't pick
+acf(Errors.Quadratic)
+AutocorTest(Errors.Quadratic,lag=1)
+AutocorTest(Errors.Quadratic,lag=log(length(ebos2)))
+```
+
+* Residuals vs Fitted: The red line is more horizontal than before so adding a quadratic term has improved the fit to the data.
+* Normal Q-Q: We can see a small improvement here. Errors are more normal than before.
+* Scale-Location: We can actually see now how the erros are equally spread around the line which means same error variance, thus, we conclude that this assumption is met. This is another improvement compared to our previous model.
+* Residuals vs Leverage: As expected, we don't have influencial outliers.
+
+After all these checks we can state that the quadratic model is a better fit for the data.
+
+
+**3.d. Use the best model from a. and c. (be sure to justify which you believe is best!)  to predict armed robberies for Nov. 1975 and Dec. 1975.**
+
+As we said above the best model is the quadratic model so we'll use it to make our predictions for Nov and Dec 1975, we'll also plot the predictions with a 95% CI:
+
+```{r, echo=FALSE}
+predtime=c(1975.833,1975.917)
+predseas=c(11,12)
+preddata=predict(bosreg2,data.frame(btime=predtime,bseas=predseas),se.fit=TRUE)
+data.frame(Time = c("Nov 1975","Dec 1975"),Prediction = preddata$fit)
+#plot
+predvalues2=preddata$fit
+prederror2=preddata$se.fit
+predupperse2=predvalues2+2*prederror2
+predlwrse2=predvalues2-2*prederror2
+plot(btime,bos.ts,ylim=c(-5,550),xlim=c(1965,1977),type='l',main="Predictions - Quadratic Linear Model")
+lines(btime,boshat2,col='red')
+points(predtime,predvalues2,col='red')
+lines(predtime,predupperse2,col='blue')
+lines(predtime,predlwrse2,col='blue')
+
+```
+ 
+**4.a. Determine the best Holt-Winters model to fit the series. Comment on any alternatives you considered and the rationale you used to determine the best model**
+
+Last, We'll try a Holt-Winters model which assumes there is no sistematic trend or seasonal effects (Though this doesn't seem to be the case). Let's check the multiplicative and the additive model:
+
+```{r, echo=FALSE}
+# holt-winters multiplicative
+hwmbos=HoltWinters(bos.ts,seasonal='multiplicative')
+#hwmbos$fitted
+#plot
+plot(bos.ts,lwd=2,main="Holt-Winters Multiplicative")
+lines(hwmbos$fitted[,1],col='red',lwd=2)
+#plot(reshwmbos,ylab='Residual')
+```
+
+```{r, echo=FALSE}
+hwabos=HoltWinters(bos.ts,seasonal='additive')
+#hwabos$fitted
+#plot
+plot(bos.ts,lwd=2,main="Holt-Winters Additive")
+lines(hwabos$fitted[,1],col='red',lwd=2)
+#plot(reshwmbos,ylab='Residual')
+```
+
+To see which one is a better fit to the data we'll check RSME:
+
+```{r, echo=FALSE}
+reshwmbos=bos.ts-hwmbos$fitted[,'xhat']
+rmse1=sqrt(sum(reshwmbos^2)/length(reshwmbos))
+#residuals
+reshwabos=bos.ts-hwabos$fitted[,'xhat']
+rmse2=sqrt(sum(reshwabos^2)/length(reshwabos))
+
+print(paste("Holt-Winters additive: ", rmse2))
+print(paste("Holt-Winters multiplicative: ", rmse1))
+```
+
+In this case the additive model is a better fit. 
+
+**4.b. Use the answer a. to predict armed robberies for Nov. 1975 and Dec. 1975**
+
+We'll use Holt-Winters additive model to make our predictions and plot them along with a 95% CI:
+
+```{r, echo=FALSE}
+p=predict(hwabos,n.ahead=2,prediction.interval=TRUE)
+p
+plot(hwabos,predicted.values=p)
+```
+
+**5. You now have several forecasts (decomposition (regression based, moving average/loess), Holt-Winters, and visual) for the number of armed robberies for Nov 1975 and Dec. 1975.  Comment on which estimates you believe to be the best (support your response with the appropriate diagnostics).**
+
+Let's now check what we know about the power of our models to make predictions:
+
+* Decomposition models: These are not usually good for predictions because they only focus on getting a good fit. As they are not good for extrapolating we avoid them to forecast values.
+* Regression to the trend of decomposition models: these models are not taking seasonality into account so the predictions can't be very reliable.
+* Regression to the trend of loess models: Here we are still not taken into account seasonally but they are ath least they use the log tranformation to make better predictions in case of multiplicative effect.
+* Regression models: Even though the assumptions for regression are not met at a 100%, they are pretty close and the good fit of the model (high R2) makes the quadratic model the best candidate to forecast values so far.
+* Holt-Winter models: They assume there is not a sistematic trend or seasonal effect which doesn't seem to be the case so we won't use them for predictions.
+
+Inspecting all the predictions visualy reinforce our idea that the quadratic regression model is the best to make predictions. To end this document we'll plot again the estimates we think are best (quadratic regression model):
+
+
+```{r, echo=FALSE}
+predvalues2=preddata$fit
+prederror2=preddata$se.fit
+predupperse2=predvalues2+2*prederror2
+predlwrse2=predvalues2-2*prederror2
+plot(btime,bos.ts,ylim=c(-5,550),xlim=c(1965,1977),type='l',main="Predictions - Quadratic Linear Model")
+lines(btime,boshat2,col='red')
+points(predtime,predvalues2,col='red')
+lines(predtime,predupperse2,col='blue')
+lines(predtime,predlwrse2,col='blue')
+```
+
+```{r, echo=FALSE}
+preddata=predict(bosreg2,data.frame(btime=predtime,bseas=predseas),se.fit=TRUE)
+data.frame(Time = c("Nov 1975","Dec 1975"),Prediction = preddata$fit) 
+```
